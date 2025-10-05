@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import {
   createPrescription,
   getPrescriptionsByUserId,
   deletePrescription,
+  upsertUser,
 } from "@/db/queries";
 
 // GET - Fetch user's prescriptions with pagination
@@ -60,6 +61,23 @@ export async function POST(request: NextRequest) {
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Ensure user exists in database (auto-create if needed)
+    try {
+      const user = await currentUser();
+      if (user) {
+        await upsertUser({
+          id: user.id,
+          email: user.emailAddresses[0]?.emailAddress || "",
+          firstName: user.firstName || null,
+          lastName: user.lastName || null,
+          imageUrl: user.imageUrl || null,
+        });
+      }
+    } catch (userError) {
+      console.error("Error ensuring user exists:", userError);
+      // Continue anyway - the user might already exist
     }
 
     const body = await request.json();

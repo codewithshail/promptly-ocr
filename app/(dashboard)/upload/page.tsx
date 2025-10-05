@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUploadThing } from "@/lib/uploadthing";
 import { validateFile, formatFileSize, ACCEPTED_EXTENSIONS } from "@/lib/file-validation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +17,6 @@ export default function UploadPage() {
   const [useAdvancedAI, setUseAdvancedAI] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
-  const { startUpload } = useUploadThing("prescriptionUploader");
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -61,17 +59,30 @@ export default function UploadPage() {
         });
       }, 200);
 
-      // Upload file using UploadThing
-      const uploadResult = await startUpload([selectedFile]);
+      // Upload file using Cloudinary
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      const uploadResponse = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const uploadData = await uploadResponse.json();
 
       clearInterval(progressInterval);
       setUploadProgress(100);
 
-      if (!uploadResult || uploadResult.length === 0) {
-        throw new Error("Upload failed");
+      if (!uploadData.success || !uploadData.url) {
+        throw new Error(uploadData.error || "Upload failed");
       }
 
-      const uploadedFile = uploadResult[0];
+      const fileUrl = uploadData.url;
+      console.log("File URL:", fileUrl);
 
       // Save file metadata to database with useAdvancedAI flag
       const response = await fetch("/api/prescriptions", {
@@ -81,7 +92,7 @@ export default function UploadPage() {
         },
         body: JSON.stringify({
           fileName: selectedFile.name,
-          fileUrl: uploadedFile.url,
+          fileUrl,
           fileSize: selectedFile.size,
           fileType: selectedFile.type,
           useAdvancedAI,

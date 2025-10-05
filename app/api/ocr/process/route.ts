@@ -32,36 +32,53 @@ async function processOCRWithRetry(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Call Mistral OCR API using the dedicated /v1/ocr endpoint
       const fileType = getFileType(fileUrl);
 
-      // Build content array based on file type
-      const content: any[] = [
-        fileType === "image_url"
-          ? { type: "image_url", imageUrl: fileUrl }
-          : { type: "document_url", documentUrl: fileUrl },
-        {
-          type: "text",
-          text: "Extract all text from this prescription image or document. Return the text in a clear, readable format with proper formatting for medication names, dosages, and instructions.",
-        },
-      ];
-
-      // Call Mistral OCR API
-      const chatResponse = await mistral.chat.complete({
+      // FIXED: document should be an object, not an array
+      // Using snake_case for property names as per REST API specification
+      // Note: The OCR API does not accept a 'prompt' parameter
+      const requestBody = {
         model: "mistral-ocr-latest",
-        messages: [
-          {
-            role: "user",
-            content,
-          },
-        ],
+        document:
+          fileType === "image_url"
+            ? { type: "image_url", image_url: fileUrl }
+            : { type: "document_url", document_url: fileUrl },
+      };
+
+      const response = await fetch("https://api.mistral.ai/v1/ocr", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.MISTRAL_API_KEY}`,
+        },
+        body: JSON.stringify(requestBody),
       });
 
-      // Extract text from response
-      const messageContent = chatResponse.choices?.[0]?.message?.content;
-      const extractedText =
-        typeof messageContent === "string" ? messageContent : "";
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OCR API error: ${response.status} - ${errorText}`);
+      }
+
+      const ocrResult = await response.json();
+
+      // Extract text from OCR response
+      // The API returns { pages: [{ markdown: "...", ... }] }
+      let extractedText = "";
+
+      if (ocrResult.pages && Array.isArray(ocrResult.pages)) {
+        // Concatenate markdown from all pages
+        extractedText = ocrResult.pages
+          .map((page: any) => page.markdown || "")
+          .join("\n\n")
+          .trim();
+      }
 
       if (!extractedText) {
+        console.error(
+          "OCR response structure:",
+          JSON.stringify(ocrResult, null, 2)
+        );
         throw new Error("No text extracted from OCR response");
       }
 
@@ -145,13 +162,30 @@ async function classifyContent(
 - Logos and signatures
 - Administrative text
 
+IMPORTANT FORMATTING RULES:
+1. ALWAYS use proper markdown formatting with headings (###), bullet points, and bold text
+2. Make medication names BOLD and prominent using **Medication Name**
+3. Use ### for section headings like "### Medications Prescribed"
+4. Use bullet points (-) for lists
+5. Highlight dosages and important instructions in bold
+6. Structure the content clearly with proper spacing
+
 Format your response EXACTLY as follows:
 
 ## Relevant Information
-[relevant content here in markdown format with proper headings and bullet points]
+
+### Medications Prescribed
+- **[Medication Name]**: [Strength/Dosage]
+  - Dosage: [specific dosage]
+  - Frequency: [how often]
+  - Duration: [how long]
+  - Instructions: [special instructions]
+
+### Important Notes
+[Any warnings or special instructions]
 
 ## Irrelevant Information
-[irrelevant content here in markdown format with proper headings and bullet points]
+[administrative content in markdown format]
 
 Prescription Text:
 ${prescriptionText}`;
@@ -178,9 +212,7 @@ ${prescriptionText}`;
       /## Irrelevant Information\s*([\s\S]*?)$/i
     );
 
-    const relevant = relevantMatch
-      ? relevantMatch[1].trim()
-      : prescriptionText;
+    const relevant = relevantMatch ? relevantMatch[1].trim() : prescriptionText;
     const irrelevant = irrelevantMatch ? irrelevantMatch[1].trim() : "";
 
     return { relevant, irrelevant };
@@ -262,7 +294,10 @@ export async function POST(request: NextRequest) {
             enhancedText,
           });
         } catch (aiError) {
-          console.error("AI enhancement failed, falling back to OCR text:", aiError);
+          console.error(
+            "AI enhancement failed, falling back to OCR text:",
+            aiError
+          );
           // Fallback to standard OCR text if AI enhancement fails
           finalText = extractedText;
         }
@@ -288,7 +323,10 @@ export async function POST(request: NextRequest) {
           irrelevantContent,
         });
       } catch (classifyError) {
-        console.error("Classification failed, using unclassified text:", classifyError);
+        console.error(
+          "Classification failed, using unclassified text:",
+          classifyError
+        );
         // Fallback: store all text as relevant if classification fails
         relevantContent = finalText;
         irrelevantContent = null;
