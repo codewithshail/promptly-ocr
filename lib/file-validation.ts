@@ -1,4 +1,4 @@
-// Supported file types for prescription uploads
+// Supported file types for copy uploads (GS and Essay)
 export const ACCEPTED_FILE_TYPES = {
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],

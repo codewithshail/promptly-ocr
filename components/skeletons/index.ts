@@ -1,0 +1,12 @@
+export { ChatbotSkeleton } from "./chatbot-skeleton";
+export { NewsFeedSkeleton } from "./news-feed-skeleton";
+export { TipsSkeleton } from "./tips-skeleton";
+export { UploadSkeleton, UploadProgressSkeleton } from "./upload-skeleton";
+export { EvaluationSkeleton } from "./evaluation-skeleton";
+export { DashboardSkeleton } from "./dashboard-skeleton";
+export { MockTestListSkeleton, MockTestInterfaceSkeleton, MockTestResultsSkeleton } from "./mock-test-skeleton";
+export { RevisionSkeleton } from "./revision-skeleton";
+export { NotesSkeleton, NoteEditorSkeleton } from "./notes-skeleton";
+export { FlashcardDeckSkeleton } from "./flashcard-skeleton";
+export { LeaderboardSkeleton } from "./leaderboard-skeleton";
+export { ProfileSkeleton } from "./profile-skeleton";

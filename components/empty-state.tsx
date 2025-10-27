@@ -8,11 +8,10 @@ export function EmptyState() {
         <FileText className="h-6 w-6 sm:h-8 sm:w-8 text-blue-600" />
       </div>
       <h3 className="mt-4 text-base sm:text-lg font-semibold text-gray-900">
-        No prescriptions yet
+        No essays yet
       </h3>
       <p className="mt-2 text-xs sm:text-sm text-muted-foreground max-w-sm px-4">
-        Get started by uploading your first prescription. We&apos;ll extract the text
-        and make it available for audio playback.
+        Get started by uploading your first UPSC essay. We&apos;ll evaluate it with AI-powered analysis and provide detailed feedback.
       </p>
       <div className="mt-6">
         <QuickUploadButton />

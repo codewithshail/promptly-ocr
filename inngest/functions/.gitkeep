@@ -1,0 +1,7 @@
+# Inngest functions will be added here
+# This directory will contain background job functions like:
+# - process-copy.ts
+# - fetch-news.ts
+# - cache-tips.ts
+# - generate-daily-quiz.ts
+# - evaluate-mock-test.ts

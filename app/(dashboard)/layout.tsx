@@ -1,43 +1,45 @@
-import { UserButton } from '@clerk/nextjs';
-import Link from 'next/link';
-import { Pill } from 'lucide-react';
+import { currentUser } from '@clerk/nextjs/server';
+import { AppSidebar } from '@/components/app-sidebar';
+import { AppNavbar } from '@/components/app-navbar';
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { db } from '@/db';
+import { userPreferences } from '@/db/schema';
+import { eq } from 'drizzle-orm';
 
-export default function DashboardLayout({
+async function getUserStreak(userId: string): Promise<number> {
+  try {
+    const preferences = await db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, userId))
+      .limit(1);
+
+    return preferences[0]?.dailyStreak ?? 0;
+  } catch (error) {
+    console.error('Error fetching user streak:', error);
+    return 0;
+  }
+}
+
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const user = await currentUser();
+  const streak = user ? await getUserStreak(user.id) : 0;
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-50 border-b bg-white shadow-sm">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2">
-            <Pill className="h-5 w-5 sm:h-6 sm:w-6 text-blue-600" />
-            <Link href="/dashboard" className="text-lg sm:text-xl font-bold text-gray-900 truncate">
-              <span className="hidden sm:inline">Prescription Reader</span>
-              <span className="sm:hidden">Rx Reader</span>
-            </Link>
+    <SidebarProvider>
+      <AppSidebar streak={streak} />
+      <SidebarInset className="overflow-x-hidden">
+        <AppNavbar />
+        <main id="main-content" className="flex flex-1 flex-col gap-4 p-4 pt-0 overflow-x-hidden">
+          <div className="min-h-[100vh] flex-1 rounded-xl bg-muted/50 md:min-h-min p-4 md:p-6 overflow-x-hidden">
+            {children}
           </div>
-          <nav className="flex items-center gap-3 sm:gap-6">
-            <Link
-              href="/dashboard"
-              className="text-xs sm:text-sm font-medium text-gray-700 hover:text-gray-900"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/upload"
-              className="text-xs sm:text-sm font-medium text-gray-700 hover:text-gray-900"
-            >
-              Upload
-            </Link>
-            <UserButton afterSignOutUrl="/" />
-          </nav>
-        </div>
-      </header>
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-        {children}
-      </main>
-    </div>
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

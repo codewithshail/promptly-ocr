@@ -1,6 +1,24 @@
 import { db } from "./index";
-import { users, prescriptions, type NewUser, type NewPrescription } from "./schema";
-import { eq, desc } from "drizzle-orm";
+import { users, userPreferences, type NewUser, type NewUserPreferences } from "./schema";
+import { eq } from "drizzle-orm";
+
+/**
+ * Database query functions for the UPSC Aspirant Platform
+ * 
+ * This file contains reusable query functions for database operations.
+ * Additional query functions for new tables (chat_messages, copy_evaluations, 
+ * news_articles, etc.) will be added as features are implemented.
+ */
+
+// Default news categories for new users
+const DEFAULT_NEWS_CATEGORIES = [
+  'national',
+  'international',
+  'economy',
+  'polity',
+  'science-tech',
+  'environment'
+];
 
 // User operations
 export async function createUser(userData: NewUser) {
@@ -28,56 +46,57 @@ export async function upsertUser(userData: NewUser) {
   return createUser(userData);
 }
 
-// Prescription operations
-export async function createPrescription(prescriptionData: NewPrescription) {
-  const [prescription] = await db
-    .insert(prescriptions)
-    .values(prescriptionData)
-    .returning();
-  return prescription;
-}
-
-export async function getPrescriptionById(prescriptionId: string) {
-  const [prescription] = await db
+// User preferences operations
+export async function getUserPreferences(userId: string) {
+  const [preferences] = await db
     .select()
-    .from(prescriptions)
-    .where(eq(prescriptions.id, prescriptionId));
-  return prescription;
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId));
+  return preferences;
 }
 
-export async function getPrescriptionsByUserId(
+export async function createDefaultUserPreferences(userId: string) {
+  const defaultPreferences: NewUserPreferences = {
+    userId,
+    newsCategories: JSON.stringify(DEFAULT_NEWS_CATEGORIES),
+    thinkingModeDefault: false,
+    notificationSettings: JSON.stringify({
+      evaluationComplete: true,
+      quizReady: true,
+      revisionDue: true,
+      streakMilestone: true,
+    }),
+    dailyStreak: 0,
+    lastActivityDate: null,
+  };
+
+  const [preferences] = await db
+    .insert(userPreferences)
+    .values(defaultPreferences)
+    .returning();
+  
+  return preferences;
+}
+
+export async function getOrCreateUserPreferences(userId: string) {
+  let preferences = await getUserPreferences(userId);
+  
+  if (!preferences) {
+    preferences = await createDefaultUserPreferences(userId);
+  }
+  
+  return preferences;
+}
+
+export async function updateUserPreferences(
   userId: string,
-  options?: { limit?: number; offset?: number }
+  updates: Partial<Omit<NewUserPreferences, 'userId'>>
 ) {
-  const query = db
-    .select()
-    .from(prescriptions)
-    .where(eq(prescriptions.userId, userId))
-    .orderBy(desc(prescriptions.createdAt));
-
-  if (options?.limit) {
-    query.limit(options.limit);
-  }
-
-  if (options?.offset) {
-    query.offset(options.offset);
-  }
-
-  return query;
-}
-
-export async function updatePrescription(
-  prescriptionId: string,
-  data: Partial<NewPrescription>
-) {
-  const [prescription] = await db
-    .update(prescriptions)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(prescriptions.id, prescriptionId))
+  const [updatedPreferences] = await db
+    .update(userPreferences)
+    .set({ ...updates, updatedAt: new Date() })
+    .where(eq(userPreferences.userId, userId))
     .returning();
-  return prescription;
-}
-
-export async function deletePrescription(prescriptionId: string) {
-  await db.delete(prescriptions).where(eq(prescriptions.id, prescriptionId));
+  
+  return updatedPreferences;
 }

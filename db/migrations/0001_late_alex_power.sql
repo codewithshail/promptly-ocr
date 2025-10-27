@@ -1,0 +1,1 @@
+ALTER TABLE "user_preferences" ADD COLUMN "leaderboard_opt_in" boolean DEFAULT true NOT NULL;

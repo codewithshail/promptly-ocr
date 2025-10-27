@@ -1,13 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { v2 as cloudinary } from "cloudinary";
-
-// Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { db } from "@/db";
+import { copyEvaluations } from "@/db/schema";
+import { fileProcessingService } from "@/lib/services/file-processing.service";
+import { inngest } from "@/lib/inngest/client";
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +18,7 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get("file") as File;
+    const copyType = formData.get("copyType") as string;
 
     if (!file) {
       return NextResponse.json(
@@ -30,22 +27,61 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Convert file to base64 for Cloudinary upload
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const base64File = `data:${file.type};base64,${buffer.toString("base64")}`;
+    if (!copyType || !["gs", "essay"].includes(copyType)) {
+      return NextResponse.json(
+        { success: false, error: "Invalid copy type. Must be 'gs' or 'essay'" },
+        { status: 400 }
+      );
+    }
 
-    // Upload to Cloudinary
-    const uploadResponse = await cloudinary.uploader.upload(base64File, {
-      folder: "prescriptions",
-      resource_type: "auto",
-      public_id: `${userId}_${Date.now()}`,
+    // Validate file type and size
+    const validation = fileProcessingService.validateFile(file, 10);
+    if (!validation.valid) {
+      return NextResponse.json(
+        { success: false, error: validation.error },
+        { status: 400 }
+      );
+    }
+
+    // Upload file to Cloudinary
+    const uploadResult = await fileProcessingService.uploadFile(file, userId);
+
+    // Create database record with status 'uploading'
+    const [copyEvaluation] = await db
+      .insert(copyEvaluations)
+      .values({
+        userId,
+        fileName: file.name,
+        fileUrl: uploadResult.url,
+        copyType,
+        status: "uploading",
+      })
+      .returning();
+
+    // Trigger Inngest job for processing
+    await inngest.send({
+      name: "copy/uploaded",
+      data: {
+        copyId: copyEvaluation.id,
+        fileUrl: uploadResult.url,
+        fileType: file.type,
+        copyType,
+        userId,
+      },
+    });
+
+    console.log("Copy uploaded successfully:", {
+      copyId: copyEvaluation.id,
+      fileName: file.name,
+      copyType,
+      url: uploadResult.url,
     });
 
     return NextResponse.json({
       success: true,
-      url: uploadResponse.secure_url,
-      publicId: uploadResponse.public_id,
+      copyId: copyEvaluation.id,
+      url: uploadResult.url,
+      status: "uploading",
     });
   } catch (error) {
     console.error("Upload error:", error);

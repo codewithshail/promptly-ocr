@@ -1,7 +1,8 @@
 import { Webhook } from "svix";
 import { headers } from "next/headers";
 import { WebhookEvent } from "@clerk/nextjs/server";
-import { upsertUser } from "@/db/queries";
+import { upsertUser, getOrCreateUserPreferences } from "@/db/queries";
+import { inngest } from "@/lib/inngest/client";
 
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
@@ -40,16 +41,35 @@ export async function POST(req: Request) {
   const eventType = evt.type;
 
   if (eventType === "user.created" || eventType === "user.updated") {
-    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+    const { id, email_addresses, first_name, last_name, image_url, public_metadata } = evt.data;
 
     try {
+      // Check if user has admin role in Clerk metadata
+      const isAdmin = (public_metadata as { role?: string })?.role === "admin";
+
       await upsertUser({
         id,
         email: email_addresses[0]?.email_address || "",
         firstName: first_name || null,
         lastName: last_name || null,
         imageUrl: image_url || null,
+        isAdmin,
       });
+
+      // Create default preferences on first login (user.created event)
+      if (eventType === "user.created") {
+        await getOrCreateUserPreferences(id);
+
+        // Trigger Inngest event for user signup
+        await inngest.send({
+          name: "user/signup.completed",
+          data: {
+            userId: id,
+            email: email_addresses[0]?.email_address || "",
+            name: `${first_name || ""} ${last_name || ""}`.trim() || "User",
+          },
+        });
+      }
 
       return new Response("User synced successfully", { status: 200 });
     } catch (error) {
